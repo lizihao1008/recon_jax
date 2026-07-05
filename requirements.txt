@@ -1,0 +1,11 @@
+# Core JAX stack
+jax>=0.6
+jaxlib>=0.6
+jax-cosmo>=0.1
+jaxpm>=0.1
+diffrax>=0.7
+optax>=0.2
+numpy>=1.24
+
+# Optional (demo diagnostics only)
+matplotlib>=3.6
