@@ -18,16 +18,21 @@ Typical usage
 """
 from .config import ReconConfig
 from .galaxy import GalaxyCatalog, make_mock_catalog, sample_galaxies_from_field
-from .forward import ForwardModel
+from .forward import ForwardModel, make_forward_model
+from .loss import build_loss, build_data_counts, field_prior
 from .reconstruct import Reconstructor
 
 __all__ = [
     "ReconConfig",
     "GalaxyCatalog",
     "ForwardModel",
+    "make_forward_model",
     "Reconstructor",
     "make_mock_catalog",
     "sample_galaxies_from_field",
+    "build_loss",
+    "build_data_counts",
+    "field_prior",
 ]
 
 __version__ = "0.1.0"

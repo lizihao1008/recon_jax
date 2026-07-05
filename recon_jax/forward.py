@@ -121,3 +121,21 @@ class ForwardModel:
         return painted - jnp.mean(painted)
 
     __call__ = matter_overdensity
+
+
+def make_forward_model(config: ReconConfig, cosmo=None) -> "ForwardModel":
+    """Construct a ready-to-use :class:`ForwardModel` from a config.
+
+    Handles the fiducial cosmology, the power-spectrum callable and the one-time
+    JaxPM growth-cache priming, so external code (e.g. the LAE_pinn torch bridge)
+    can obtain a differentiable ``linear -> density`` operator in one call::
+
+        fm = make_forward_model(cfg)
+        delta = fm.matter_overdensity(linear)     # differentiable in `linear`
+    """
+    from .cosmology import get_cosmo, power_spectrum_fn, prime_growth_cache
+
+    cosmo = get_cosmo() if cosmo is None else cosmo
+    prime_growth_cache(cosmo, config.a_init)
+    pk_fn = power_spectrum_fn(cosmo)
+    return ForwardModel(config, cosmo, pk_fn)
