@@ -89,11 +89,48 @@ The only observational input is a `GalaxyCatalog`:
 (Convert physical Mpc/h to grid units with `x_cells = x_mpc / config.cell_size`,
 and a redshift error to a comoving line-of-sight error the same way.)
 
-## Install
+## Setup (no `pip install` for this repo)
+
+`recon_jax` is a **path-based** package: clone the repo and put the project
+root on `PYTHONPATH`. Only the third-party JAX stack needs to be installed.
 
 ```bash
-pip install -r requirements.txt   # jax, jaxpm, jax-cosmo, diffrax, optax, numpy
+# once per shell / Jupyter kernel
+export PYTHONPATH="/path/to/field_recon/recon_jax:$PYTHONPATH"
+
+# or
+source /path/to/field_recon/recon_jax/env.sh
 ```
+
+Install dependencies (jax, jaxpm, jax-cosmo, diffrax, optax, numpy):
+
+```bash
+pip install -r requirements.txt
+```
+
+In a script under ``examples/``, add the project root explicitly (``demo.py`` does
+this), or set ``PYTHONPATH`` / ``source env.sh`` first.
+
+In a notebook at the project root (usual Jupyter cwd):
+
+```python
+import bootstrap
+from recon_jax import ReconConfig, Reconstructor
+```
+
+Directory layout (the folder added to `PYTHONPATH` is the outer `recon_jax/`):
+
+```
+field_recon/recon_jax/          ← add this to PYTHONPATH
+  bootstrap.py
+  recon_jax/                    ← importable package
+    __init__.py
+    config.py
+    ...
+  examples/demo.py
+```
+
+Optional: `pip install -e .` still works via `pyproject.toml`, but is not required.
 
 ## Usage
 

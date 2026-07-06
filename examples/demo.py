@@ -11,10 +11,14 @@ Run:  python examples/demo.py
 """
 import os
 import sys
+from pathlib import Path
+
+# Project root on sys.path (same effect as PYTHONPATH or `import bootstrap` in notebooks)
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 import numpy as np
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from recon_jax import ReconConfig, Reconstructor, make_mock_catalog
 from recon_jax.painting import galaxy_bias
