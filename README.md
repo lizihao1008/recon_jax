@@ -132,6 +132,52 @@ field_recon/recon_jax/          ← add this to PYTHONPATH
 
 Optional: `pip install -e .` still works via `pyproject.toml`, but is not required.
 
+## Troubleshooting (AMD GPU / ROCm)
+
+If L-BFGS fails with:
+
+```
+ValueError: INTERNAL: Failed to set memcpy d2d node params: HIP_ERROR_InvalidValue
+```
+
+JAX is running on an **AMD GPU (ROCm/HIP)** and hit a known bug in XLA's GPU
+command-buffer / HIP-graph path (often during repeated `jax.jit` steps in
+`reconstruct._run_stage`).
+
+**Fix 1 — disable GPU command buffers (try GPU first):**
+
+```bash
+source /path/to/recon_jax/env_rocm.sh   # sets PYTHONPATH + XLA_FLAGS
+python your_script.py
+```
+
+Or manually, **before** importing `jax` / `recon_jax`:
+
+```bash
+export XLA_FLAGS="${XLA_FLAGS:+$XLA_FLAGS }--xla_gpu_enable_command_buffer="
+```
+
+In a notebook, run `import bootstrap` first (with `RECON_JAX_ROCM=1` set) so the
+flag is applied before JAX loads.
+
+**Fix 2 — force CPU (most reliable, slower):**
+
+```bash
+export JAX_PLATFORMS=cpu
+```
+
+For `nc ≲ 64` and moderate galaxy counts, CPU is often acceptable on a cluster
+login/compute node.
+
+**Fix 3 — if Fix 1 is not enough:**
+
+```bash
+export XLA_FLAGS="${XLA_FLAGS:+$XLA_FLAGS }--xla_gpu_graph_min_graph_size=65536"
+```
+
+Also check that the host **ROCm driver** matches your `jaxlib` ROCm build (driver
+mismatches can surface as `HIP_ERROR_InvalidValue`).
+
 ## Usage
 
 ```python

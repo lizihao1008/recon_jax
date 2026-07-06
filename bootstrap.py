@@ -17,10 +17,26 @@ repository itself is not installed as a package.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent
+
+
+def _configure_jax_rocm() -> None:
+    """Apply ROCm/HIP workarounds before jax is imported.
+
+    Set ``RECON_JAX_ROCM=1`` or ``source env_rocm.sh`` on AMD GPU clusters.
+    Disables XLA GPU command buffers, which avoids errors such as
+    ``HIP_ERROR_InvalidValue: Failed to set memcpy d2d node params``.
+    """
+    if os.environ.get("RECON_JAX_ROCM", "").lower() not in ("1", "true", "yes"):
+        return
+    flag = "--xla_gpu_enable_command_buffer="
+    xla = os.environ.get("XLA_FLAGS", "")
+    if flag not in xla:
+        os.environ["XLA_FLAGS"] = f"{xla} {flag}".strip() if xla else flag
 
 
 def ensure_path() -> Path:
@@ -32,4 +48,5 @@ def ensure_path() -> Path:
 
 
 # Convenience: ``import bootstrap`` is enough.
+_configure_jax_rocm()
 ensure_path()
