@@ -42,22 +42,28 @@ from .painting import galaxy_bias, gaussian_smooth, paint_galaxies
 # ----------------------------------------------------------------------------
 # Field prior  (Horowitz & Melchior 2023, Eq. 10)
 # ----------------------------------------------------------------------------
-def _pk_mesh(nc, box_size, pk_fn):
-    """Fiducial P(k) evaluated on the 3-D grid, JaxPM ``linear_field`` convention."""
-    dummy = jnp.zeros((nc, nc, nc), dtype=jnp.complex64)
+def _pk_mesh(mesh_shape, box, pk_fn):
+    """Fiducial P(k) on the 3-D grid, JaxPM ``linear_field`` convention.
+
+    Supports rectangular meshes: per-axis wavenumbers ``kk_i / L_i * n_i`` and
+    the amplitude normalisation ``(nx*ny*nz)/(Lx*Ly*Lz)``.
+    """
+    dummy = jnp.zeros(tuple(mesh_shape), dtype=jnp.complex64)
     kvec = fftk(dummy)
-    kmesh = sum((kk / box_size * nc) ** 2 for kk in kvec) ** 0.5
-    pkmesh = pk_fn(kmesh) * (nc ** 3) / (box_size ** 3)
+    kmesh = sum((kk / box[i] * mesh_shape[i]) ** 2 for i, kk in enumerate(kvec)) ** 0.5
+    n_cells = mesh_shape[0] * mesh_shape[1] * mesh_shape[2]
+    volume = box[0] * box[1] * box[2]
+    pkmesh = pk_fn(kmesh) * n_cells / volume
     # avoid division by zero at the k=0 (DC) mode
     return pkmesh.at[0, 0, 0].set(1.0)
 
 
-def field_prior(linear, pkmesh, nc):
+def field_prior(linear, pkmesh, n_cells):
     """Gaussian prior  sum_k |delta_lin(k)|**2 / P(k)  (normalised per mode)."""
     dk = jnp.fft.fftn(linear)
     power = jnp.abs(dk) ** 2
     chi2 = jnp.sum(power / pkmesh)
-    return chi2 / (nc ** 3)
+    return chi2 / n_cells
 
 
 # ----------------------------------------------------------------------------
@@ -75,7 +81,7 @@ def build_data_counts(catalog, mesh_shape, los_axis=2):
     1-D radial convolution mentioned in the paper, but the per-galaxy form here
     also supports a different uncertainty for every galaxy.
     """
-    nc = mesh_shape[0]
+    mesh_shape = tuple(int(x) for x in mesh_shape)
     pos = np.asarray(catalog.positions, dtype=np.float64)
     sig = np.asarray(catalog.los_sigma, dtype=np.float64)
     sig = np.clip(sig, 1e-3, None)  # a spec-z galaxy is a near-delta kernel
@@ -83,27 +89,28 @@ def build_data_counts(catalog, mesh_shape, los_axis=2):
     axes = [0, 1, 2]
     axes.remove(los_axis)
     a0, a1 = axes
+    n0, n1, n_los = mesh_shape[a0], mesh_shape[a1], mesh_shape[los_axis]
 
-    # transverse CIC (bilinear) weights
+    # transverse CIC (bilinear) weights on the two non-LOS axes
     t0, t1 = pos[:, a0], pos[:, a1]
     f0 = np.floor(t0).astype(int)
     f1 = np.floor(t1).astype(int)
     d0, d1 = t0 - f0, t1 - f1
 
-    # line-of-sight Gaussian kernel over all cells, periodic
-    grid = np.arange(nc)
+    # line-of-sight Gaussian kernel over the LOS-axis cells, periodic
+    grid = np.arange(n_los)
     diff = grid[None, :] - pos[:, los_axis][:, None]
-    diff = (diff + nc / 2.0) % nc - nc / 2.0
+    diff = (diff + n_los / 2.0) % n_los - n_los / 2.0
     los_w = np.exp(-0.5 * (diff / sig[:, None]) ** 2)
     los_w /= los_w.sum(axis=1, keepdims=True)  # normalise each galaxy to unit count
 
     # accumulate into a [a0, a1, los] work array, then move axes back
-    work = np.zeros((nc, nc, nc), dtype=np.float64)
-    work2 = work.reshape(nc * nc, nc)
+    work = np.zeros((n0, n1, n_los), dtype=np.float64)
+    work2 = work.reshape(n0 * n1, n_los)
     for c0, w0 in ((f0, 1.0 - d0), (f0 + 1, d0)):
         for c1, w1 in ((f1, 1.0 - d1), (f1 + 1, d1)):
-            idx = (c0 % nc) * nc + (c1 % nc)          # flattened transverse cell
-            contrib = (w0 * w1)[:, None] * los_w      # (K, nc)
+            idx = (c0 % n0) * n1 + (c1 % n1)          # flattened transverse cell
+            contrib = (w0 * w1)[:, None] * los_w      # (K, n_los)
             np.add.at(work2, idx, contrib)
 
     counts = np.moveaxis(work, [0, 1, 2], [a0, a1, los_axis])
@@ -158,13 +165,13 @@ def build_loss(config, forward_model, catalog, pk_fn, mode="poisson"):
     ``{"linear": ..., "los": (N_gal,)}`` and the redshift errors enter through a
     per-galaxy prior on the free line-of-sight coordinates.
     """
-    nc = config.nc
     mesh_shape = config.mesh_shape
-    pkmesh = _pk_mesh(nc, config.box_size, pk_fn)
+    n_cells = mesh_shape[0] * mesh_shape[1] * mesh_shape[2]
+    pkmesh = _pk_mesh(mesh_shape, config.box, pk_fn)
 
     if mode == "poisson":
         counts = jnp.asarray(build_data_counts(catalog, mesh_shape, config.los_axis))
-        mean_count = counts.sum() / (nc ** 3)  # expected counts per cell
+        mean_count = counts.sum() / n_cells  # expected counts per cell
 
         def loss(params, radius):
             linear = params["linear"]
@@ -173,7 +180,7 @@ def build_loss(config, forward_model, catalog, pk_fn, mode="poisson"):
             rate = mean_count * (1.0 + delta_g)  # phi_i, expected counts per cell
             loss_val = config.galaxy_fac * poisson_nll(rate, counts, radius)
             if config.prior_fac != 0.0:
-                loss_val += config.prior_fac * field_prior(linear, pkmesh, nc)
+                loss_val += config.prior_fac * field_prior(linear, pkmesh, n_cells)
             return loss_val
 
         return loss, {"counts": counts, "mean_count": mean_count}
@@ -194,7 +201,7 @@ def build_loss(config, forward_model, catalog, pk_fn, mode="poisson"):
         loss_val = config.galaxy_fac * like
         loss_val += config.redshift_fac * redshift_prior(los, los_obs, los_sigma)
         if config.prior_fac != 0.0:
-            loss_val += config.prior_fac * field_prior(linear, pkmesh, nc)
+            loss_val += config.prior_fac * field_prior(linear, pkmesh, n_cells)
         return loss_val
 
     return loss, {"los_obs": los_obs, "los_sigma": los_sigma, "xy": xy}

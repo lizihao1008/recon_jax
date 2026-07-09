@@ -16,8 +16,11 @@ class ReconConfig:
 
     Grid / geometry
     ---------------
-    nc         : particle-mesh side length (the cube has ``nc**3`` cells).
-    box_size   : physical box size in Mpc/h (cubic box assumed).
+    nc         : particle-mesh grid size.  Either an int (cubic, ``nc**3`` cells)
+                 or a 3-tuple ``(nx, ny, nz)`` for a rectangular mesh.
+    box_size   : physical box size in Mpc/h.  Either a float (cubic) or a 3-tuple
+                 ``(Lx, Ly, Lz)`` for a rectangular box.  Cell sizes may differ
+                 per axis (``cell_size`` returns a 3-tuple).
 
     Time stepping  (specified as REDSHIFTS)
     -------------
@@ -55,8 +58,8 @@ class ReconConfig:
     """
 
     # --- grid / geometry -------------------------------------------------
-    nc: int = 32
-    box_size: float = 128.0
+    nc: "int | Tuple[int, int, int]" = 32            # cubic side, or (nx, ny, nz)
+    box_size: "float | Tuple[float, float, float]" = 128.0  # cubic side, or (Lx, Ly, Lz)
 
     # --- time stepping (specified as REDSHIFTS) --------------------------
     z_init: float = 20     # z of the LPT/initial epoch  (a_init = 1/(1+z_init))
@@ -89,16 +92,19 @@ class ReconConfig:
 
     @property
     def mesh_shape(self) -> Tuple[int, int, int]:
-        return (self.nc, self.nc, self.nc)
+        n = self.nc
+        return (int(n), int(n), int(n)) if isinstance(n, int) else tuple(int(x) for x in n)
 
     @property
     def box(self) -> Tuple[float, float, float]:
-        return (self.box_size, self.box_size, self.box_size)
+        b = self.box_size
+        return (float(b),) * 3 if isinstance(b, (int, float)) else tuple(float(x) for x in b)
 
     @property
-    def cell_size(self) -> float:
-        """Physical size of one grid cell in Mpc/h."""
-        return self.box_size / self.nc
+    def cell_size(self) -> Tuple[float, float, float]:
+        """Physical size of one grid cell in Mpc/h, per axis (Lx/nx, Ly/ny, Lz/nz)."""
+        ms, bx = self.mesh_shape, self.box
+        return tuple(bx[i] / ms[i] for i in range(3))
 
     @property
     def a_init(self) -> float:
@@ -115,3 +121,17 @@ class ReconConfig:
             raise ValueError("anneal_scales and maxiter must have equal length")
         if self.z_init <= self.z_final:
             raise ValueError("z_init must be greater than z_final (evolve forward in time)")
+        # JaxPM's particle-mesh gravity operates in grid units and assumes CUBIC
+        # cells.  Rectangular *boxes* are fine as long as the mesh is chosen
+        # proportional to the box (equal cell size on every axis); anisotropic
+        # cells introduce an unphysical anisotropy in the LPT/PM forces.
+        cs = self.cell_size
+        if max(cs) / min(cs) > 1.01:
+            import warnings
+            warnings.warn(
+                "recon_jax: non-cubic cells "
+                f"{tuple(round(float(c), 3) for c in cs)} Mpc/h. JaxPM's PM gravity "
+                "assumes cubic cells; pick nc proportional to box_size so that "
+                "Lx/nx = Ly/ny = Lz/nz for physically correct forces.",
+                stacklevel=2,
+            )

@@ -31,10 +31,10 @@ class ForwardModel:
         self.cfg = config
         self.cosmo = cosmo
         self.pk_fn = pk_fn
-        nc = config.nc
-        # Lagrangian (grid) positions of the particles, shape (nc**3, 3).
+        nx, ny, nz = config.mesh_shape
+        # Lagrangian (grid) positions of the particles, shape (nx*ny*nz, 3).
         self.q = jnp.stack(
-            jnp.meshgrid(jnp.arange(nc), jnp.arange(nc), jnp.arange(nc), indexing="ij"),
+            jnp.meshgrid(jnp.arange(nx), jnp.arange(ny), jnp.arange(nz), indexing="ij"),
             axis=-1,
         ).reshape(-1, 3).astype(jnp.float32)
         self._ode = make_ode_fn(config.mesh_shape)

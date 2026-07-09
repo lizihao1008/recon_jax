@@ -37,32 +37,41 @@ class GalaxyCatalog:
         return cls(positions=xyz, los_sigma=los_sigma)
 
 
-def sample_galaxies_from_field(delta_g, n_gal, rng, nc):
+def _as_mesh(grid):
+    """Normalise ``grid`` (int cubic or (nx,ny,nz) tuple) to a 3-tuple of ints."""
+    return (int(grid),) * 3 if isinstance(grid, int) else tuple(int(x) for x in grid)
+
+
+def sample_galaxies_from_field(delta_g, n_gal, rng, grid):
     """Poisson/rejection sample ``n_gal`` galaxy positions from an overdensity field.
 
-    Probability of drawing a galaxy in a cell is proportional to ``1 + delta_g``
-    (clipped at 0).  Returns positions in grid units with sub-cell jitter.
+    ``grid`` is an int (cubic) or an ``(nx, ny, nz)`` tuple.  Probability of
+    drawing a galaxy in a cell is proportional to ``1 + delta_g`` (clipped at 0).
+    Returns positions in grid units with sub-cell jitter.
     """
+    mesh = _as_mesh(grid)
     prob = np.clip(1.0 + np.asarray(delta_g), 0.0, None).ravel()
     prob = prob / prob.sum()
     idx = rng.choice(prob.size, size=n_gal, p=prob)
-    ix, iy, iz = np.unravel_index(idx, (nc, nc, nc))
+    ix, iy, iz = np.unravel_index(idx, mesh)
     jitter = rng.random((n_gal, 3))
     return (np.stack([ix, iy, iz], axis=-1) + jitter).astype(np.float32)
 
 
-def make_mock_catalog(delta_g, n_gal, los_sigma, rng, nc):
+def make_mock_catalog(delta_g, n_gal, los_sigma, rng, grid, los_axis=2):
     """Build a mock :class:`GalaxyCatalog` with photo-z-style scatter.
 
-    True positions are sampled from ``delta_g``; the line-of-sight coordinate is
+    ``grid`` is an int (cubic) or an ``(nx, ny, nz)`` tuple.  True positions are
+    sampled from ``delta_g``; the line-of-sight coordinate (axis ``los_axis``) is
     then perturbed by Gaussian noise of width ``los_sigma`` (grid units) to
     emulate redshift errors.  Both the scattered catalogue and the true
     positions are returned so a demo can check the recovery.
     """
-    true_pos = sample_galaxies_from_field(delta_g, n_gal, rng, nc)
+    mesh = _as_mesh(grid)
+    true_pos = sample_galaxies_from_field(delta_g, n_gal, rng, mesh)
     los_sigma = np.broadcast_to(np.asarray(los_sigma, np.float32), (n_gal,)).copy()
     obs_pos = true_pos.copy()
-    obs_pos[:, 2] = obs_pos[:, 2] + rng.normal(0.0, los_sigma)
-    obs_pos[:, 2] = np.mod(obs_pos[:, 2], nc)  # keep inside the periodic box
+    obs_pos[:, los_axis] = obs_pos[:, los_axis] + rng.normal(0.0, los_sigma)
+    obs_pos[:, los_axis] = np.mod(obs_pos[:, los_axis], mesh[los_axis])  # periodic wrap
     cat = GalaxyCatalog(positions=obs_pos, los_sigma=los_sigma)
     return cat, true_pos

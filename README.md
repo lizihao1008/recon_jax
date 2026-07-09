@@ -82,12 +82,27 @@ L(δ_lin, z_gal) =  galaxy_fac · ‖smooth(δ_g^model) − smooth(δ_g^data)‖
 
 The only observational input is a `GalaxyCatalog`:
 
-* `positions` — `(N_gal, 3)` array in **grid units** `[0, nc)`; column 2 is the
-  line-of-sight (redshift) coordinate.
+* `positions` — `(N_gal, 3)` array in **grid units** `[0, nx) × [0, ny) × [0, nz)`;
+  column 2 is the line-of-sight (redshift) coordinate.
 * `los_sigma` — `(N_gal,)` per-galaxy 1σ redshift uncertainty, in grid cells.
 
-(Convert physical Mpc/h to grid units with `x_cells = x_mpc / config.cell_size`,
-and a redshift error to a comoving line-of-sight error the same way.)
+(Convert physical Mpc/h to grid units per axis with
+`x_cells = x_mpc / config.cell_size[axis]`, and a redshift error to a comoving
+line-of-sight error the same way.)
+
+### Rectangular boxes
+
+`nc` and `box_size` accept either a scalar (cubic) or a 3-tuple for a rectangular
+mesh / box:
+
+```python
+cfg = ReconConfig(nc=(32, 32, 96), box_size=(128.0, 128.0, 384.0))  # 4 Mpc/h cubic cells
+```
+
+JaxPM's particle-mesh gravity works in grid units and assumes **cubic cells**, so
+choose the mesh proportional to the box (`Lx/nx = Ly/ny = Lz/nz`). recon_jax
+warns if the cells come out anisotropic. `cfg.cell_size` returns the per-axis
+cell size `(Lx/nx, Ly/ny, Lz/nz)`.
 
 ## Setup (no `pip install` for this repo)
 

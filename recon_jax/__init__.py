@@ -17,6 +17,11 @@ Typical usage
     delta = out["delta_m"]      # reconstructed evolved density field
 """
 from .config import ReconConfig
+try:  # coords needs astropy (optional; only for sky -> grid conversion)
+    from .coords import SkyToGridResult, sky_to_transverse_grid, z_err_to_comoving_mpc
+except ImportError:  # pragma: no cover
+    SkyToGridResult = None
+    sky_to_transverse_grid = None
 from .galaxy import GalaxyCatalog, make_mock_catalog, sample_galaxies_from_field
 from .forward import ForwardModel, make_forward_model
 from .loss import build_loss, build_data_counts, field_prior
@@ -24,6 +29,9 @@ from .reconstruct import Reconstructor
 
 __all__ = [
     "ReconConfig",
+    "SkyToGridResult",
+    "sky_to_transverse_grid",
+    "z_err_to_comoving_mpc",
     "GalaxyCatalog",
     "ForwardModel",
     "make_forward_model",

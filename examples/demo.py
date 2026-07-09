@@ -64,8 +64,9 @@ def main():
     # --- 2. mock redshift-space catalogue with photo-z scatter ----------
     n_gal = 8000
     los_sigma = 0.1  # grid cells of redshift error (photo-z-like)
-    catalog, true_pos = make_mock_catalog(truth_g_rsd, n_gal, los_sigma, rng, cfg.nc)
-    occ = n_gal / cfg.nc ** 3
+    catalog, true_pos = make_mock_catalog(truth_g_rsd, n_gal, los_sigma, rng, cfg.mesh_shape)
+    nx, ny, nz = cfg.mesh_shape
+    occ = n_gal / (nx * ny * nz)
     print(f"mock: {catalog.num_gal} redshift-space galaxies, "
           f"los_sigma = {los_sigma} cells, occupancy = {occ:.2f} gal/cell")
 
@@ -89,7 +90,7 @@ def main():
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        sl = cfg.nc // 2
+        sl = cfg.mesh_shape[0] // 2
         fig, ax = plt.subplots(1, 4, figsize=(17, 4))
         vmin, vmax = np.percentile(truth_rsd[sl], [2, 98])
         ax[0].imshow(truth_rsd[sl], vmin=vmin, vmax=vmax, cmap="magma")
